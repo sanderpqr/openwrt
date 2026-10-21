@@ -117,6 +117,15 @@ define Kernel/Configure/Default
 	$(LINUX_CONF_CMD) > $(LINUX_DIR)/.config.target
 # copy CONFIG_KERNEL_* settings over to .config.target
 	awk '/^(#[[:space:]]+)?CONFIG_KERNEL/{sub("CONFIG_KERNEL_","CONFIG_");print}' $(TOPDIR)/.config >> $(LINUX_DIR)/.config.target
+# Linux has no prompt for DEBUG_INFO, it is set by the "Debug information"
+# choice. Set every member explicitly, so the result does not depend on the
+# order of the merged config (kconfig picks the last enabled choice member).
+$(if $(CONFIG_KERNEL_DEBUG_INFO), \
+echo "# CONFIG_DEBUG_INFO_NONE is not set" >> $(LINUX_DIR)/.config.target, \
+printf '%s\n' "CONFIG_DEBUG_INFO_NONE=y" \
+"# CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT is not set" \
+"# CONFIG_DEBUG_INFO_DWARF4 is not set" \
+"# CONFIG_DEBUG_INFO_DWARF5 is not set" >> $(LINUX_DIR)/.config.target)
 	echo "# CONFIG_KALLSYMS_ALL is not set" >> $(LINUX_DIR)/.config.target
 	echo "CONFIG_KALLSYMS_UNCOMPRESSED=y" >> $(LINUX_DIR)/.config.target
 	$(SCRIPT_DIR)/package-metadata.pl kconfig $(TMP_DIR)/.packageinfo $(TOPDIR)/.config $(KERNEL_PATCHVER) > $(LINUX_DIR)/.config.override
