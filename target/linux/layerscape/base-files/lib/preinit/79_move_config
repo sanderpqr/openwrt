@@ -7,6 +7,7 @@ move_config() {
 	local board=$(board_name)
 
 	case "$board" in
+	mono,gateway-dk | \
 	fsl,ls1012a-frwy-sdboot | \
 	fsl,ls1021a-iot-sdboot | \
 	fsl,ls1021a-twr-sdboot | \

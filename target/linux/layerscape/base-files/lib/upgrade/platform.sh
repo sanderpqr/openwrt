@@ -125,6 +125,46 @@ platform_do_upgrade_t40() {
 	trap - EXIT HUP INT TERM
 }
 
+# p1 at 32 MiB and p2 at 96 MiB, as created by emmc.img and the vendor firmware.
+mono_gateway_check_layout() {
+	[ "$(cat /sys/class/block/mmcblk0p1/start 2>/dev/null)" = "65536" ] &&
+	[ "$(cat /sys/class/block/mmcblk0p2/start 2>/dev/null)" = "196608" ]
+}
+
+platform_do_upgrade_mono_gateway() {
+	local tar_file="$1"
+	local board_dir sqfs_size
+
+	board_dir=$(tar tf "$tar_file" | grep -m 1 '^sysupgrade-.*/$')
+	board_dir=${board_dir%/}
+
+	mount -t ext4 -o rw,noatime /dev/mmcblk0p1 /mnt || {
+		echo "Boot partition is not ext4, install with the emmc image"
+		return 1
+	}
+	# Drop anything else in /boot: the factory boot command prefers
+	# /boot/Image.gz over the FIT.
+	echo "Writing kernel..."
+	rm -rf /mnt/boot
+	mkdir -p /mnt/boot
+	tar xf "$tar_file" "${board_dir}/kernel" -O > /mnt/boot/kernel.itb || {
+		umount /mnt
+		return 1
+	}
+	umount /mnt || return 1
+
+	echo "Writing rootfs..."
+	tar xf "$tar_file" "${board_dir}/root" -O | \
+		dd of=/dev/mmcblk0p2 bs=1M conv=fsync || return 1
+
+	# Invalidate the old rootfs_data overlay, which fstools places at the
+	# next 64 KiB boundary after the squashfs image.
+	sqfs_size=$(hexdump -s 40 -n 4 -e '1/4 "%u"' /dev/mmcblk0p2)
+	[ -n "$sqfs_size" ] && [ "$sqfs_size" -gt 0 ] || return 1
+	dd if=/dev/zero of=/dev/mmcblk0p2 bs=64k count=16 conv=fsync \
+		seek=$(( (sqfs_size + 65535) / 65536 )) 2> /dev/null
+}
+
 platform_copy_config_sdboot() {
 	local diskdev partdev parttype=ext4
 
@@ -144,6 +184,9 @@ platform_copy_config() {
 	local board=$(board_name)
 
 	case "$board" in
+	mono,gateway-dk)
+		platform_copy_config_sdboot
+		;;
 	watchguard,firebox-t40)
 		echo "Saving config backup..."
 		[ "$T40_ROOT_DEV" -a "$T40_ROOTFS_BLOCKS" ] || {
@@ -172,6 +215,13 @@ platform_check_image() {
 	traverse,ten64)
 		nand_do_platform_check "ten64-mtd" $1
 		return $?
+		;;
+	mono,gateway-dk)
+		mono_gateway_check_layout || {
+			echo "Unexpected eMMC partition layout"
+			return 1
+		}
+		return 0
 		;;
 	fsl,ls1012a-frdm | \
 	fsl,ls1012a-frwy-sdboot | \
@@ -210,6 +260,9 @@ platform_do_upgrade() {
 	touch /var/lock/fw_printenv.lock
 
 	case "$board" in
+	mono,gateway-dk)
+		platform_do_upgrade_mono_gateway "$1"
+		;;
 	traverse,ten64)
 		platform_do_upgrade_traverse_slotubi "${1}"
 		;;

@@ -1,0 +1,608 @@
+From: Sander van Deijck <sander@vandeijck.com>
+Subject: [PATCH] arm64: dts: layerscape: add Mono Gateway DK
+
+Add the device tree for the Mono Gateway Development Kit, an NXP
+LS1046A-based router.
+
+The tree uses the mainline DPAA1/FMan bindings: three SGMII copper ports
+on the dedicated XFI MDIO bus and two 10GBASE-R SFP+ cages driven
+through phylink. It also describes the I2C-muxed board peripherals
+(TMP431 sensors, EMC2305 fan controller, INA234 power monitors, PCF2131
+RTC, HD3SS3220 Type-C controller, LP5812 status LED), the SFP cage
+LEDs, the NXP 88W8987 UART Bluetooth, eMMC, USB, PCIe and the QSPI NOR
+boot-chain partitions.
+
+Based on the vendor device tree by Tomaz Zaman <tomaz@mono.si>.
+
+Signed-off-by: Sander van Deijck <sander@vandeijck.com>
+---
+--- a/arch/arm64/boot/dts/freescale/Makefile
++++ b/arch/arm64/boot/dts/freescale/Makefile
+@@ -21,6 +21,7 @@ dtb-$(CONFIG_ARCH_LAYERSCAPE) += fsl-ls1
+ dtb-$(CONFIG_ARCH_LAYERSCAPE) += fsl-ls1043a-watchguard-firebox-t40.dtb
+ dtb-$(CONFIG_ARCH_LAYERSCAPE) += fsl-ls1043a-tqmls1043a-mbls10xxa.dtb
+ dtb-$(CONFIG_ARCH_LAYERSCAPE) += fsl-ls1046a-frwy.dtb
++dtb-$(CONFIG_ARCH_LAYERSCAPE) += fsl-ls1046a-mono-gateway-dk.dtb
+ dtb-$(CONFIG_ARCH_LAYERSCAPE) += fsl-ls1046a-qds.dtb
+ dtb-$(CONFIG_ARCH_LAYERSCAPE) += fsl-ls1046a-rdb.dtb
+ dtb-$(CONFIG_ARCH_LAYERSCAPE) += fsl-ls1046a-tqmls1046a-mbls10xxa.dtb
+--- /dev/null
++++ b/arch/arm64/boot/dts/freescale/fsl-ls1046a-mono-gateway-dk.dts
+@@ -0,0 +1,577 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Device Tree file for the Mono Gateway Development Kit (NXP LS1046A)
++ *
++ * Mainline-driver variant: uses the stock fsl-ls1046a.dtsi and the upstream
++ * DPAA1 (fsl_dpaa_eth / fman / lynx PCS) bindings. No NXP SDK nodes.
++ *
++ * Based on the vendor device tree by Tomaz Zaman <tomaz@mono.si>,
++ * Copyright 2026 Mono Technologies Inc.
++ */
++
++/dts-v1/;
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/leds/common.h>
++#include <dt-bindings/pwm/pwm.h>
++#include "fsl-ls1046a.dtsi"
++
++/ {
++	model = "Mono Gateway Development Kit";
++	compatible = "mono,gateway-dk", "fsl,ls1046a";
++
++	aliases {
++		serial0 = &duart0;
++		serial1 = &duart1;
++		led-boot = &led_status_green;
++		led-failsafe = &led_status_red;
++		led-running = &led_status_white;
++		led-upgrade = &led_status_blue;
++	};
++
++	chosen {
++		/*
++		 * The factory U-Boot environment passes root=/dev/mmcblk0p1,
++		 * which holds only the kernel FIT here; the rootfs is on p2.
++		 */
++		bootargs-override = "console=ttyS0,115200 earlycon=uart8250,mmio,0x21c0500 root=/dev/mmcblk0p2 rootwait";
++		stdout-path = "serial0:115200n8";
++	};
++
++	gpio-poweroff {
++		compatible = "gpio-poweroff";
++		gpios = <&gpio2 21 GPIO_ACTIVE_HIGH>;
++		timeout-ms = <1000>;
++	};
++
++	/*
++	 * SFP+ cage LEDs. Driven from userspace (netdev trigger on the
++	 * matching port) instead of the vendor "mono,sfp-led" driver.
++	 */
++	leds {
++		compatible = "gpio-leds";
++
++		led-0 {
++			label = "sfp0:link";
++			gpios = <&gpio2 17 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++
++		led-1 {
++			label = "sfp0:activity";
++			gpios = <&gpio2 18 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++
++		led-2 {
++			label = "sfp1:link";
++			gpios = <&gpio2 15 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++
++		led-3 {
++			label = "sfp1:activity";
++			gpios = <&gpio2 16 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++	};
++
++	sfp_xfi0: sfp-0 {
++		compatible = "sff,sfp";
++		i2c-bus = <&sfp0_i2c>;
++		tx-disable-gpios = <&gpio2 14 GPIO_ACTIVE_HIGH>;
++		mod-def0-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
++		los-gpios = <&gpio2 11 GPIO_ACTIVE_HIGH>;
++		maximum-power-milliwatt = <3000>;
++	};
++
++	sfp_xfi1: sfp-1 {
++		compatible = "sff,sfp";
++		i2c-bus = <&sfp1_i2c>;
++		tx-disable-gpios = <&gpio2 13 GPIO_ACTIVE_HIGH>;
++		mod-def0-gpios = <&gpio2 10 GPIO_ACTIVE_LOW>;
++		los-gpios = <&gpio2 9 GPIO_ACTIVE_HIGH>;
++		maximum-power-milliwatt = <3000>;
++	};
++};
++
++&duart0 {
++	status = "okay";
++};
++
++&duart1 {
++	uart-has-rtscts;
++	status = "okay";
++
++	bluetooth {
++		compatible = "nxp,88w8987-bt";
++		fw-init-baudrate = <3000000>;
++	};
++};
++
++&esdhc {
++	mmc-hs200-1_8v;
++	bus-width = <4>;
++	status = "okay";
++};
++
++&gpio2 {
++	two-r-enable-hog {
++		gpio-hog;
++		gpios = <6 GPIO_ACTIVE_LOW>;
++		output-high;
++		line-name = "2r-enable";
++	};
++
++	three-r-enable-hog {
++		gpio-hog;
++		gpios = <2 GPIO_ACTIVE_LOW>;
++		output-low;
++		line-name = "3r-enable";
++	};
++
++	/* high selects the 2R UART routing, low the 3R one */
++	uart-mux-hog {
++		gpio-hog;
++		gpios = <26 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "uart-mux";
++	};
++};
++
++&i2c0 {
++	status = "okay";
++
++	i2c-mux@70 {
++		compatible = "nxp,pca9545";
++		reg = <0x70>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		/*
++		 * Channel 0 carries a TI DS100DF410 10G retimer at 0x18 for
++		 * the SFP+ lanes. It has no Linux driver or binding and is
++		 * expected to run from its power-on/bootloader configuration.
++		 */
++		i2c@0 {
++			reg = <0>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++		};
++
++		i2c@1 {
++			reg = <1>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			temperature-sensor@4c {
++				compatible = "ti,tmp431";
++				reg = <0x4c>;
++			};
++		};
++
++		i2c@2 {
++			reg = <2>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			temperature-sensor@4c {
++				compatible = "ti,tmp431";
++				reg = <0x4c>;
++			};
++		};
++
++		i2c@3 {
++			reg = <3>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			fan_controller: fan-controller@2e {
++				compatible = "microchip,emc2305";
++				reg = <0x2e>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++				#pwm-cells = <3>;
++				/*
++				 * The 6.18 emc2305 driver registers a single
++				 * cooling device for all fans on this node
++				 * (states 0..10), not one per fan child.
++				 */
++				#cooling-cells = <2>;
++
++				fan@0 {
++					reg = <0>;
++					label = "System Fan 1";
++					pwms = <&fan_controller 26000 PWM_POLARITY_INVERTED 1>;
++				};
++
++				fan@1 {
++					reg = <1>;
++					label = "System Fan 2";
++					pwms = <&fan_controller 26000 PWM_POLARITY_INVERTED 1>;
++				};
++			};
++		};
++	};
++};
++
++&i2c1 {
++	status = "okay";
++
++	i2c-mux@70 {
++		compatible = "nxp,pca9545";
++		reg = <0x70>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++		/*
++		 * Only the hot-pluggable SFP modules live behind this mux:
++		 * park it disconnected and reset it at probe so a bad module
++		 * can't wedge the bus while idle.
++		 */
++		i2c-mux-idle-disconnect;
++		reset-gpios = <&gpio2 24 GPIO_ACTIVE_LOW>;
++
++		sfp0_i2c: i2c@0 {
++			reg = <0>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++		};
++
++		sfp1_i2c: i2c@1 {
++			reg = <1>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++		};
++	};
++};
++
++&i2c2 {
++	status = "okay";
++
++	i2c-mux@70 {
++		compatible = "nxp,pca9545";
++		reg = <0x70>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		i2c@0 {
++			reg = <0>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			power-sensor@40 {
++				compatible = "ti,ina234";
++				reg = <0x40>;
++				label = "USB Power Delivery";
++				shunt-resistor = <1000>;
++			};
++
++			power-sensor@41 {
++				compatible = "ti,ina234";
++				reg = <0x41>;
++				label = "5V PSU";
++				shunt-resistor = <1000>;
++			};
++
++			power-sensor@42 {
++				compatible = "ti,ina234";
++				reg = <0x42>;
++				label = "1V Core PSU";
++				shunt-resistor = <1000>;
++			};
++
++			power-sensor@43 {
++				compatible = "ti,ina234";
++				reg = <0x43>;
++				label = "1.2V DDR PSU";
++				shunt-resistor = <5000>;
++			};
++		};
++
++		i2c@1 {
++			reg = <1>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			power-sensor@40 {
++				compatible = "ti,ina234";
++				reg = <0x40>;
++				label = "1.35V SerDes PSU";
++				shunt-resistor = <5000>;
++			};
++
++			power-sensor@41 {
++				compatible = "ti,ina234";
++				reg = <0x41>;
++				label = "1.8V PSU";
++				shunt-resistor = <5000>;
++			};
++
++			power-sensor@42 {
++				compatible = "ti,ina234";
++				reg = <0x42>;
++				label = "2.5V DDR PSU";
++				shunt-resistor = <5000>;
++			};
++
++			power-sensor@43 {
++				compatible = "ti,ina234";
++				reg = <0x43>;
++				label = "3.3V PSU";
++				shunt-resistor = <1000>;
++			};
++		};
++
++		i2c@2 {
++			reg = <2>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			rtc@53 {
++				compatible = "nxp,pcf2131";
++				reg = <0x53>;
++			};
++
++			usb-typec@47 {
++				compatible = "ti,hd3ss3220";
++				reg = <0x47>;
++			};
++		};
++
++		i2c@3 {
++			reg = <3>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			/*
++			 * Status LED: one RGBW LED on the four direct-drive
++			 * outputs (OUT0 white, OUT1 blue, OUT2 green, OUT3
++			 * red, per the vendor tree). The ti,lp5812 binding
++			 * only allows multi-led groups on the scan matrix, so
++			 * the channels are four single LEDs. The driver names
++			 * LEDs after "label" only, hence the labels.
++			 */
++			led-controller@6c {
++				compatible = "ti,lp5812";
++				reg = <0x6c>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				led_status_white: led@0 {
++					reg = <0>;
++					label = "white:status";
++					color = <LED_COLOR_ID_WHITE>;
++					function = LED_FUNCTION_STATUS;
++					led-max-microamp = <25500>;
++				};
++
++				led_status_blue: led@1 {
++					reg = <1>;
++					label = "blue:status";
++					color = <LED_COLOR_ID_BLUE>;
++					function = LED_FUNCTION_STATUS;
++					led-max-microamp = <25500>;
++				};
++
++				led_status_green: led@2 {
++					reg = <2>;
++					label = "green:status";
++					color = <LED_COLOR_ID_GREEN>;
++					function = LED_FUNCTION_STATUS;
++					led-max-microamp = <25500>;
++				};
++
++				led_status_red: led@3 {
++					reg = <3>;
++					label = "red:status";
++					color = <LED_COLOR_ID_RED>;
++					function = LED_FUNCTION_STATUS;
++					led-max-microamp = <25500>;
++				};
++			};
++		};
++	};
++};
++
++&pcie3 {
++	/* M.2 / u-blox JODY-W3 (88W9098) Wi-Fi */
++	status = "okay";
++};
++
++&qspi {
++	status = "okay";
++
++	flash@0 {
++		compatible = "jedec,spi-nor";
++		reg = <0>;
++		spi-max-frequency = <50000000>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			/* Boot chain: offsets are fixed by the RCW and U-Boot */
++			partition@0 {
++				label = "rcw-bl2";
++				reg = <0x0 0x100000>;
++				read-only;
++			};
++
++			partition@100000 {
++				label = "uboot";
++				reg = <0x100000 0x200000>;
++				read-only;
++			};
++
++			partition@300000 {
++				label = "uboot-env";
++				reg = <0x300000 0x100000>;
++			};
++
++			partition@400000 {
++				label = "fman-ucode";
++				reg = <0x400000 0x100000>;
++				read-only;
++			};
++
++			/* Vendor recovery region */
++			partition@500000 {
++				label = "backup";
++				reg = <0x500000 0x300000>;
++				read-only;
++			};
++
++			partition@800000 {
++				label = "recovery-fit";
++				reg = <0x800000 0x1800000>;
++				read-only;
++			};
++		};
++	};
++};
++
++&usb0 {
++	dr_mode = "host";
++	status = "okay";
++};
++
++&usb1 {
++	status = "disabled";
++};
++
++&usb2 {
++	status = "disabled";
++};
++
++/*
++ * Fan curve on the CPU cluster sensor, using the stock step_wise governor:
++ * a 20% floor whenever the board is running, ramp from 20% at 40 C up to
++ * full speed, full speed from 80 C. CPU throttling (map0, 85 C) and the
++ * critical trip are inherited from fsl-ls1046a.dtsi.
++ */
++&{/thermal-zones/cluster-thermal} {
++	polling-delay = <1000>;
++
++	trips {
++		fan_floor: fan-floor {
++			temperature = <20000>;
++			hysteresis = <0>;
++			type = "active";
++		};
++
++		fan_ramp: fan-ramp {
++			temperature = <40000>;
++			hysteresis = <2000>;
++			type = "active";
++		};
++
++		fan_full: fan-full {
++			temperature = <80000>;
++			hysteresis = <2000>;
++			type = "active";
++		};
++	};
++
++	cooling-maps {
++		map-fan-floor {
++			trip = <&fan_floor>;
++			cooling-device = <&fan_controller 2 2>;
++		};
++
++		map-fan-ramp {
++			trip = <&fan_ramp>;
++			cooling-device = <&fan_controller 2 10>;
++		};
++
++		map-fan-full {
++			trip = <&fan_full>;
++			cooling-device = <&fan_controller 10 10>;
++		};
++	};
++};
++
++#include "fsl-ls1046-post.dtsi"
++
++/*
++ * Ethernet: three SGMII copper ports and two 10GBASE-R SFP+ cages.
++ * MAC1, MAC3 and MAC4 are not wired.
++ */
++&fman0 {
++	ethernet@e0000 {
++		status = "disabled";
++	};
++
++	ethernet@e2000 {
++		phy-handle = <&sgmii_phy2>;
++		phy-connection-type = "sgmii";
++	};
++
++	ethernet@e4000 {
++		status = "disabled";
++	};
++
++	ethernet@e6000 {
++		status = "disabled";
++	};
++
++	ethernet@e8000 {
++		phy-handle = <&sgmii_phy0>;
++		phy-connection-type = "sgmii";
++	};
++
++	ethernet@ea000 {
++		phy-handle = <&sgmii_phy1>;
++		phy-connection-type = "sgmii";
++	};
++
++	ethernet@f0000 { /* 10GEC1, SFP+ 0 */
++		phy-connection-type = "10gbase-r";
++		managed = "in-band-status";
++		sfp = <&sfp_xfi0>;
++	};
++
++	ethernet@f2000 { /* 10GEC2, SFP+ 1 */
++		phy-connection-type = "10gbase-r";
++		managed = "in-band-status";
++		sfp = <&sfp_xfi1>;
++	};
++
++	mdio@fc000 {
++		status = "disabled";
++	};
++
++	mdio@fd000 {
++		sgmii_phy0: ethernet-phy@0 {
++			reg = <0x0>;
++		};
++
++		sgmii_phy1: ethernet-phy@1 {
++			reg = <0x1>;
++		};
++
++		sgmii_phy2: ethernet-phy@2 {
++			reg = <0x2>;
++		};
++	};
++};

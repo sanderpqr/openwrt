@@ -1,6 +1,8 @@
 do_sysinfo_layerscape_fixup() {
 	[ -e /tmp/sysinfo/board_name ] || return
 	[ -e /proc/cmdline ] || return
+	# eMMC is the only boot medium, no separate -sdboot variant
+	[ "$(strings /tmp/sysinfo/board_name)" = "mono,gateway-dk" ] && return
 	cmdline=$(strings /proc/cmdline)
 	case "${cmdline}" in
 		*root=/dev/mmcblk*)

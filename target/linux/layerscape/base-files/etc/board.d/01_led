@@ -9,6 +9,12 @@ board_config_update
 board=$(board_name)
 
 case "$board" in
+mono,gateway-dk)
+	ucidef_set_led_netdev "sfp0_link" "SFP 0 link" "sfp0:link" "eth3" "link"
+	ucidef_set_led_netdev "sfp0_act" "SFP 0 activity" "sfp0:activity" "eth3" "tx rx"
+	ucidef_set_led_netdev "sfp1_link" "SFP 1 link" "sfp1:link" "eth4" "link"
+	ucidef_set_led_netdev "sfp1_act" "SFP 1 activity" "sfp1:activity" "eth4" "tx rx"
+	;;
 traverse,ten64)
 	ucidef_set_led_netdev "sfp1" "SFP 1" "ten64:green:sfp1:down" "eth8" "link tx rx"
 	ucidef_set_led_netdev "sfp2" "SFP 2" "ten64:green:sfp2:up" "eth9" "link tx rx"

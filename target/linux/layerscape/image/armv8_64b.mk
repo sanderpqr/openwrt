@@ -473,6 +473,67 @@ define Device/fsl_lx2160a-rdb-sdboot
 endef
 TARGET_DEVICES += fsl_lx2160a-rdb-sdboot
 
+# Mono Gateway DK: the factory U-Boot environment runs "run emmc", which loads
+# /boot/Image.gz plus a dtb from eMMC partition 1 and, failing that, the FIT
+# /boot/kernel.itb (bootm). OpenWrt ships only the FIT, so the second path is
+# taken. The first 32 MiB of the eMMC hold the boot firmware, so emmc.img is
+# written in two steps: its first sector, then everything from 32 MiB on.
+#
+# eMMC layout:
+#   0-512 B       MBR
+#   4 KiB-32 MiB  boot firmware (untouched)
+#   p1  32 MiB    32 MiB ext4 with /boot/kernel.itb
+#   p2  96 MiB    squashfs rootfs with the loop-backed rootfs_data tail
+#
+# p2 starts at 96 MiB as in the vendor firmware's layout, so sysupgrade works
+# on units installed either way.
+#
+# The 1 MiB after the squashfs is zeroed so that fstools does not pick up a
+# stale rootfs_data left by a previous installation.
+MONO_GATEWAY_BOOTPART_OFFSET := 32
+MONO_GATEWAY_BOOTPART_SIZE := 32
+MONO_GATEWAY_ROOTPART_OFFSET := 96
+
+define Build/mono-gateway-emmc
+	rm -rf $@.boot $@.bootfs
+	mkdir -p $@.boot/boot
+	$(CP) $(IMAGE_KERNEL) $@.boot/boot/kernel.itb
+	make_ext4fs -J -L kernel -l $(MONO_GATEWAY_BOOTPART_SIZE)M \
+		$(if $(SOURCE_DATE_EPOCH),-T $(SOURCE_DATE_EPOCH)) \
+		$@.bootfs $@.boot
+	ptgen -o $@ -h 4 -s 63 -l 1024 -S 0x$(IMG_PART_SIGNATURE) \
+		-t 83 -p $(MONO_GATEWAY_BOOTPART_SIZE)M@$(MONO_GATEWAY_BOOTPART_OFFSET)M \
+		-t 83 -p $(CONFIG_TARGET_ROOTFS_PARTSIZE)M@$(MONO_GATEWAY_ROOTPART_OFFSET)M
+	dd if=$@.bootfs of=$@ bs=1M seek=$(MONO_GATEWAY_BOOTPART_OFFSET) conv=notrunc
+	dd if=$(IMAGE_ROOTFS) of=$@ bs=1M seek=$(MONO_GATEWAY_ROOTPART_OFFSET) conv=notrunc
+	dd if=/dev/zero of=$@ bs=64k count=16 conv=notrunc \
+		seek=$$(( $(MONO_GATEWAY_ROOTPART_OFFSET) * 16 + \
+			($$(stat -c%s $(IMAGE_ROOTFS)) + 65535) / 65536 ))
+	rm -rf $@.boot $@.bootfs
+endef
+
+define Device/mono_gateway-dk
+  DEVICE_VENDOR := Mono
+  DEVICE_MODEL := Gateway DK
+  DEVICE_DTS := fsl-ls1046a-mono-gateway-dk
+  # U-Boot reads the FIT to 0x82000000; decompress the kernel clear of it
+  KERNEL_LOADADDR := 0x84000000
+  KERNEL := kernel-bin | gzip | fit gzip $$(DEVICE_DTS_DIR)/$$(DEVICE_DTS).dtb
+  IMAGES := emmc.img.gz sysupgrade.bin
+  IMAGE/emmc.img.gz := mono-gateway-emmc | gzip
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  DEVICE_PACKAGES += \
+    kmod-hwmon-emc2305 \
+    kmod-hwmon-ina2xx \
+    kmod-hwmon-tmp401 \
+    kmod-i2c-mux-pca954x \
+    kmod-leds-gpio \
+    kmod-leds-lp5812 \
+    kmod-phy-maxlinear \
+    kmod-sfp
+endef
+TARGET_DEVICES += mono_gateway-dk
+
 define Device/traverse_ten64-mtd
   DEVICE_VENDOR := Traverse
   DEVICE_MODEL := Ten64 (NAND boot)
