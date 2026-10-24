@@ -697,6 +697,22 @@ endef
 $(eval $(call KernelPackage,hwmon-tmp103))
 
 
+define KernelPackage/hwmon-tmp401
+  TITLE:=Texas Instruments TMP401 and compatibles monitoring support
+  KCONFIG:=CONFIG_SENSORS_TMP401
+  FILES:=$(LINUX_DIR)/drivers/hwmon/tmp401.ko
+  AUTOLOAD:=$(call AutoProbe,tmp401)
+  $(call AddDepends/hwmon,+kmod-i2c-core +kmod-regmap-core)
+endef
+
+define KernelPackage/hwmon-tmp401/description
+ Kernel module for the Texas Instruments TMP401, TMP411, TMP431, TMP432
+ and TMP435 temperature sensor chips.
+endef
+
+$(eval $(call KernelPackage,hwmon-tmp401))
+
+
 define KernelPackage/hwmon-tmp421
   TITLE:=TI TMP421 and compatible monitoring support
   KCONFIG:=CONFIG_SENSORS_TMP421
