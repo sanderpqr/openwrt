@@ -183,6 +183,23 @@ endef
 $(eval $(call KernelPackage,leds-ktd202x))
 
 
+define KernelPackage/leds-lp5812
+  SUBMENU:=LED modules
+  TITLE:=LED support for TI LP5812
+  DEPENDS:=+kmod-i2c-core
+  KCONFIG:=CONFIG_LEDS_LP5812
+  FILES:=$(LINUX_DIR)/drivers/leds/rgb/leds-lp5812.ko
+  AUTOLOAD:=$(call AutoProbe,leds-lp5812,1)
+endef
+
+define KernelPackage/leds-lp5812/description
+  This option enables support for the Texas Instruments LP5812
+  4x3 matrix RGB LED driver with autonomous animation engine.
+endef
+
+$(eval $(call KernelPackage,leds-lp5812))
+
+
 define KernelPackage/leds-mlxcpld
   SUBMENU:=$(LEDS_MENU)
   TITLE:=LED support for the Mellanox boards
